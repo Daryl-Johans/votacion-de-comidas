@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sabores de Vallegrande | Votación de Comidas Típicas (Interactiva)</title>
+    
+    <!-- Metaetiquetas SEO -->
+    <meta name="description" content="Participa en la votación oficial de la gastronomía de Vallegrande, Bolivia. Crea tu cuenta, inicia sesión y elige tu plato favorito entre las delicias tradicionales.">
+    <meta name="keywords" content="Vallegrande, Comidas Tipicas, Asadito Colorado, Bolivia, Gastronomia, Votacion, Crear Cuenta">
+    <meta name="author" content="Sabores de Vallegrande">
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍖</text></svg>">
+    
+    <!-- Iconos FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Estilos del Proyecto -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- Barra de Sesión de Usuario -->
+    <div class="session-bar" id="session-bar">
+        <!-- Cargado de forma dinámica por JS -->
+    </div>
+
+    <div class="app-container">
+        
+        <!-- Cabecera de la Aplicación -->
+        <header>
+            <span class="hero-badge">
+                <i class="fas fa-star animate-pulse"></i> Tradición Gastronómica de Bolivia
+            </span>
+            <h1>Sabores de Vallegrande</h1>
+            <p class="hero-subtitle">
+                Descubre los manjares ancestrales de la hermosa provincia de Vallegrande. Explora sus sabores tradicionales, conoce su historia y vota por tu delicia favorita.
+            </p>
+        </header>
+
+        <!-- Layout Principal -->
+        <main class="main-layout auth-view" id="main-layout">
+            
+            <!-- SECCIÓN IZQUIERDA: Tarjetas de Comida o Formulario de Login/Registro -->
+            <section class="foods-section" id="main-content-section">
+                <!-- Se cargará dinámicamente mediante JS (app_static.js):
+                     - Si NO está logueado: Muestra la tarjeta integrada de Login/Registro.
+                     - Si ESTÁ logueado: Muestra el grid de los 4 platos con botones de votar. -->
+            </section>
+
+            <!-- SECCIÓN DERECHA: Resultados en Tiempo Real -->
+            <section class="results-section">
+                <div class="results-header">
+                    <h2 class="results-title"><i class="fas fa-chart-simple"></i> Resultados</h2>
+                    <div class="total-votes-badge">
+                        Total: <span id="total-votes-count">0</span> votos
+                    </div>
+                </div>
+
+                <!-- Contenedor para Notificaciones de Votación -->
+                <div id="notice-container">
+                    <!-- Dinámico por JavaScript: Mensajes de información o éxito -->
+                </div>
+
+                <!-- Tarjetas de KPIs en Vivo -->
+                <div class="kpi-grid">
+                    <!-- Tarjeta 1: Plato Líder -->
+                    <div class="kpi-card leader-kpi" id="kpi-leader-card">
+                        <div class="kpi-icon"><i class="fas fa-crown"></i></div>
+                        <div class="kpi-content">
+                            <span class="kpi-title">Plato Líder</span>
+                            <span class="kpi-value" id="kpi-leader-name">Ninguno</span>
+                            <span class="kpi-subtitle" id="kpi-leader-stats">Sin votos aún</span>
+                        </div>
+                    </div>
+
+                    <!-- Tarjeta 2: Votos Totales -->
+                    <div class="kpi-card total-kpi">
+                        <div class="kpi-icon"><i class="fas fa-vote-yea"></i></div>
+                        <div class="kpi-content">
+                            <span class="kpi-title">Votos Totales</span>
+                            <span class="kpi-value" id="kpi-total-value">0</span>
+                            <span class="kpi-subtitle">Participación activa</span>
+                        </div>
+                    </div>
+
+                    <!-- Tarjeta 3: Margen / Tendencia -->
+                    <div class="kpi-card trend-kpi">
+                        <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
+                        <div class="kpi-content">
+                            <span class="kpi-title">Margen de Ventaja</span>
+                            <span class="kpi-value" id="kpi-trend-value">N/A</span>
+                            <span class="kpi-subtitle" id="kpi-trend-stats">Esperando votos</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="results-chart-container" id="results-chart-container">
+                    <!-- Cargado dinámicamente por JS en la versión estática -->
+                </div>
+
+                <!-- Tarjeta de Invitación y Código QR para registro móvil -->
+                <div class="qr-invite-card">
+                    <div class="qr-invite-header">
+                        <i class="fas fa-qrcode"></i>
+                        <span>¡Comparte y Vota!</span>
+                    </div>
+                    <div class="qr-invite-body">
+                        <div class="qr-code-wrapper">
+                            <img id="qr-code-image" src="" alt="Código QR de Registro y Votación" loading="lazy">
+                        </div>
+                        <p class="qr-invite-text">
+                            Escanea este código QR con la cámara de tu celular para ingresar al instante, registrar tu cuenta y elegir tu plato vallegrandino favorito.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Botón de reinicio de demostración local para desarrollo -->
+                <button id="reset-vote-btn" class="reset-vote-btn" title="Limpiar almacenamiento local y reiniciar simulación de desarrollo">
+                    <i class="fas fa-rotate-left"></i> Reiniciar Demo (Desarrollo)
+                </button>
+            </section>
+
+        </main>
+
+        <!-- Pie de Página -->
+        <footer>
+            <p>© 2026 | Creado con ❤️ para exaltar la cultura de <span class="footer-accent">Vallegrande, Bolivia</span></p>
+            <p style="font-size: 0.78rem; opacity: 0.6;">HTML5 • CSS3 Moderno • JavaScript ES6 (Registro de Usuarios Emulado)</p>
+        </footer>
+
+    </div>
+
+    <!-- Script de Lógica Interactiva Estática -->
+    <script src="js/app_static.js"></script>
+</body>
+</html>

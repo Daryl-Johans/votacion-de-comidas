@@ -1,0 +1,33 @@
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependencias PHP / Composer
+vendor/
+composer.lock
+
+# Variables de entorno y configuración sensible
+.env
+.env.local
+config.local.php
+
+# Datos de la base de datos (si hay archivos SQLite u otros)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Archivos temporales
+*.tmp
+*.temp
+*.cache
