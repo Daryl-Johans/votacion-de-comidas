@@ -1,418 +1,285 @@
 <?php
 /**
  * db_helper.php
- * Helper de acceso a datos para el sistema de votación de comidas de Vallegrande.
- * Calcula los votos dinámicamente basándose en la elección de cada usuario en data/users.json.
- * Cada usuario real registrado puede votar por un único plato (1 voto por usuario).
+ * Helper de acceso a datos - Sistema de Votación Sabores de Vallegrande.
+ * Usa MySQL (PDO) como backend de datos.
+ * Compatible con InfinityFree (sql210.infinityfree.com) y XAMPP local.
  */
 
-define('VOTES_FILE', __DIR__ . '/data/votes.json');
-define('USERS_FILE', __DIR__ . '/data/users.json');
+// Cargar credenciales de BD
+if (file_exists(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
+}
+if (!defined('DB_PASSWORD')) {
+    define('DB_PASSWORD', ''); // Fallback XAMPP local (root sin contraseña)
+}
 
-/**
- * Obtiene la lista de usuarios registrados de forma segura.
- * 
- * @return array Lista de usuarios.
- */
-function get_users() {
-    if (!file_exists(USERS_FILE)) {
-        return [];
+// ══════════════════════════════════════════════════════════════
+//  CONFIGURACIÓN DE CONEXIÓN
+//  Detecta automáticamente si estamos en local (XAMPP) o en producción
+// ══════════════════════════════════════════════════════════════
+
+function get_db_config(): array {
+    $is_local = (
+        $_SERVER['HTTP_HOST'] === 'localhost' ||
+        str_starts_with($_SERVER['HTTP_HOST'], '127.') ||
+        str_starts_with($_SERVER['HTTP_HOST'], '192.168.')
+    );
+
+    if ($is_local) {
+        // Configuración XAMPP local
+        return [
+            'host'     => 'localhost',
+            'dbname'   => 'votacion_comidas',
+            'username' => 'root',
+            'password' => '',
+            'charset'  => 'utf8mb4',
+        ];
+    } else {
+        // Configuración InfinityFree (producción)
+        return [
+            'host'     => 'sql210.infinityfree.com',
+            'dbname'   => 'if0_42133638_votacion',
+            'username' => 'if0_42133638',
+            'password' => DB_PASSWORD, // Definida en config.php
+            'charset'  => 'utf8mb4',
+        ];
     }
-
-    $fp = fopen(USERS_FILE, 'r');
-    if (!$fp) {
-        return [];
-    }
-
-    $users = [];
-    if (flock($fp, LOCK_SH)) {
-        $filesize = filesize(USERS_FILE);
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $users = json_decode($content, true);
-        }
-        flock($fp, LOCK_UN);
-    }
-    fclose($fp);
-
-    return is_array($users) ? $users : [];
 }
 
 /**
- * Obtiene la lista de comidas con sus conteos calculados DINÁMICAMENTE.
- * Suma las elecciones (voted_for) individuales de los usuarios registrados.
- * 
- * @return array Lista de comidas con votos actualizados.
+ * Devuelve una conexión PDO activa.
  */
-function get_foods() {
-    if (!file_exists(VOTES_FILE)) {
-        return [];
+function get_pdo(): PDO {
+    static $pdo = null;
+    if ($pdo !== null) return $pdo;
+
+    $cfg = get_db_config();
+    $dsn = "mysql:host={$cfg['host']};dbname={$cfg['dbname']};charset={$cfg['charset']}";
+
+    try {
+        $pdo = new PDO($dsn, $cfg['username'], $cfg['password'], [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error de conexión a la base de datos: ' . $e->getMessage()
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
-    $fp = fopen(VOTES_FILE, 'r');
-    if (!$fp) {
-        return [];
+    return $pdo;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  FUNCIONES PRINCIPALES
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Obtiene la lista de comidas con sus conteos de votos calculados dinámicamente.
+ */
+function get_foods(): array {
+    $pdo = get_pdo();
+
+    // Obtener todas las comidas
+    $foods = $pdo->query("SELECT * FROM foods ORDER BY id")->fetchAll();
+
+    // Calcular votos por comida desde la tabla de usuarios
+    $counts = $pdo->query(
+        "SELECT voted_for, COUNT(*) as total
+         FROM users
+         WHERE voted_for IS NOT NULL AND voted_for != ''
+         GROUP BY voted_for"
+    )->fetchAll();
+
+    $vote_map = [];
+    foreach ($counts as $row) {
+        $vote_map[$row['voted_for']] = (int)$row['total'];
     }
 
-    $foods = [];
-    if (flock($fp, LOCK_SH)) {
-        $filesize = filesize(VOTES_FILE);
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $foods = json_decode($content, true);
-        }
-        flock($fp, LOCK_UN);
-    } else {
-        $content = file_get_contents(VOTES_FILE);
-        $foods = json_decode($content, true);
-    }
-    fclose($fp);
-
-    if (!is_array($foods)) {
-        return [];
-    }
-
-    // 1. Leer los usuarios registrados
-    $users = get_users();
-
-    // 2. Contabilizar los votos (1 por usuario registrado)
-    $vote_counts = [];
-    foreach ($users as $user) {
-        if (isset($user['voted_for']) && !empty($user['voted_for'])) {
-            $food_id = $user['voted_for'];
-            if (is_array($food_id)) {
-                if (count($food_id) > 0) {
-                    $food_id = end($food_id);
-                } else {
-                    continue;
-                }
-            }
-            if (is_string($food_id) && !empty($food_id)) {
-                $vote_counts[$food_id] = isset($vote_counts[$food_id]) ? $vote_counts[$food_id] + 1 : 1;
-            }
-        }
-    }
-
-    // 3. Inyectar los votos reales dinámicamente en cada comida
     foreach ($foods as &$food) {
-        $food['votes'] = isset($vote_counts[$food['id']]) ? $vote_counts[$food['id']] : 0;
+        $food['votes'] = $vote_map[$food['id']] ?? 0;
     }
 
     return $foods;
 }
 
 /**
- * Registra un único voto asociándolo al usuario autenticado (1 voto máximo).
- * 
- * @param string $food_id ID del plato a votar.
- * @param string $username Nombre de usuario que realiza el voto.
- * @return array|bool Retorna la lista actualizada de comidas o false si falla o ya votó.
+ * Obtiene la lista completa de usuarios registrados.
  */
-function vote_food($food_id, $username) {
+function get_users(): array {
+    $pdo = get_pdo();
+    return $pdo->query("SELECT * FROM users ORDER BY created_at")->fetchAll();
+}
+
+/**
+ * Registra el voto de un usuario autenticado (1 voto máximo por usuario).
+ *
+ * @return array|string|false  Lista actualizada de comidas, 'already_voted', o false en error.
+ */
+function vote_food(string $food_id, string $username) {
     $username = trim($username);
-    if (empty($username) || empty($food_id)) {
-        return false;
+    $food_id  = trim($food_id);
+
+    if (empty($username) || empty($food_id)) return false;
+
+    $pdo = get_pdo();
+
+    // Validar que el food_id exista en el catálogo de comidas registradas
+    $stmtFood = $pdo->prepare("SELECT id FROM foods WHERE id = ?");
+    $stmtFood->execute([$food_id]);
+    if (!$stmtFood->fetch()) {
+        return false; // Plato inexistente: rechazar voto
     }
 
-    if (!file_exists(USERS_FILE)) {
-        return false;
-    }
+    // Verificar si ya votó
+    $stmt = $pdo->prepare("SELECT voted_for FROM users WHERE LOWER(username) = LOWER(?)");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
 
-    $fp = fopen(USERS_FILE, 'r+');
-    if (!$fp) {
-        return false;
-    }
+    if (!$user) return false;
+    if (!empty($user['voted_for'])) return 'already_voted';
 
-    $success = false;
-    $already_voted = false;
+    // Registrar el voto
+    $stmt = $pdo->prepare(
+        "UPDATE users SET voted_for = ?, voted_at = NOW() WHERE LOWER(username) = LOWER(?)"
+    );
+    $stmt->execute([$food_id, $username]);
 
-    if (flock($fp, LOCK_EX)) {
-        $filesize = filesize(USERS_FILE);
-        $users = [];
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $users = json_decode($content, true);
-        }
-
-        if (is_array($users)) {
-            $found = false;
-            foreach ($users as &$user) {
-                if (strcasecmp($user['username'], $username) === 0) {
-                    // Verificar si ya tiene un voto registrado
-                    $has_previous_vote = false;
-                    if (isset($user['voted_for']) && !empty($user['voted_for'])) {
-                        if (is_array($user['voted_for'])) {
-                            $has_previous_vote = count($user['voted_for']) > 0;
-                        } else {
-                            $has_previous_vote = true;
-                        }
-                    }
-                    
-                    if ($has_previous_vote) {
-                        $already_voted = true;
-                        break;
-                    }
-                    
-                    // Registrar el único voto
-                    $user['voted_for'] = $food_id;
-                    $user['voted_at'] = date('Y-m-d H:i:s');
-                    $found = true;
-                    break;
-                }
-            }
-
-            if ($found && !$already_voted) {
-                rewind($fp);
-                ftruncate($fp, 0);
-                fwrite($fp, json_encode($users, JSON_PRETTY_PRINT));
-                fflush($fp);
-                $success = true;
-            }
-        }
-        flock($fp, LOCK_UN);
-    }
-    fclose($fp);
-
-    if ($already_voted) {
-        return 'already_voted';
-    }
-
-    return $success ? get_foods() : false;
+    return $stmt->rowCount() > 0 ? get_foods() : false;
 }
 
 /**
  * Registra un nuevo usuario con contraseña encriptada BCRYPT.
- * 
- * @param string $username Nombre de usuario.
- * @param string $password Contraseña en texto plano.
- * @return array|string Retorna 'success' en éxito o un mensaje de error en caso de fallo.
+ *
+ * @return string 'success' o mensaje de error.
  */
-function register_user($username, $password) {
+function register_user(string $username, string $password): string {
     $username = trim($username);
     $password = trim($password);
 
     if (empty($username) || empty($password)) {
         return 'Usuario y contraseña no pueden estar vacíos.';
     }
-
     if (strlen($username) < 3) {
         return 'El usuario debe tener al menos 3 caracteres.';
     }
-
     if (strlen($password) < 4) {
         return 'La contraseña debe tener al menos 4 caracteres.';
     }
 
-    $dir = dirname(USERS_FILE);
-    if (!is_dir($dir)) {
-        mkdir($dir, 0755, true);
+    $pdo = get_pdo();
+
+    // Verificar si el usuario ya existe
+    $stmt = $pdo->prepare("SELECT id FROM users WHERE LOWER(username) = LOWER(?)");
+    $stmt->execute([$username]);
+    if ($stmt->fetch()) {
+        return 'El nombre de usuario ya está registrado.';
     }
 
-    $fp = fopen(USERS_FILE, 'c+');
-    if (!$fp) {
-        return 'Error del sistema al abrir base de datos de usuarios.';
-    }
+    $hash = password_hash($password, PASSWORD_BCRYPT);
 
-    $error = null;
+    $stmt = $pdo->prepare(
+        "INSERT INTO users (username, password, voted_for, created_at)
+         VALUES (?, ?, NULL, NOW())"
+    );
+    $stmt->execute([$username, $hash]);
 
-    if (flock($fp, LOCK_EX)) {
-        $filesize = filesize(USERS_FILE);
-        $users = [];
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $users = json_decode($content, true);
-        }
-        if (!is_array($users)) {
-            $users = [];
-        }
-
-        // Verificar si el usuario ya existe
-        foreach ($users as $user) {
-            if (strcasecmp($user['username'], $username) === 0) {
-                $error = 'El nombre de usuario ya está registrado.';
-                break;
-            }
-        }
-
-        if (!$error) {
-            $hashed_password = password_hash($password, PASSWORD_BCRYPT);
-            
-            $users[] = [
-                'username' => $username,
-                'password' => $hashed_password,
-                'voted_for' => null, // Inicia sin voto (puede votar una sola vez)
-                'created_at' => date('Y-m-d H:i:s')
-            ];
-
-            rewind($fp);
-            ftruncate($fp, 0);
-            fwrite($fp, json_encode($users, JSON_PRETTY_PRINT));
-            fflush($fp);
-        }
-
-        flock($fp, LOCK_UN);
-    } else {
-        $error = 'El servidor está ocupado. Intenta de nuevo.';
-    }
-
-    fclose($fp);
-    return $error ? $error : 'success';
+    return $stmt->rowCount() > 0 ? 'success' : 'Error al registrar el usuario.';
 }
 
 /**
- * Autentica un usuario verificando su contraseña cifrada en BCRYPT.
- * 
- * @param string $username Nombre de usuario.
- * @param string $password Contraseña en texto plano.
- * @return bool True si es válido, False de lo contrario.
+ * Autentica un usuario verificando su contraseña cifrada.
  */
-function authenticate_user($username, $password) {
+function authenticate_user(string $username, string $password): bool {
     $username = trim($username);
     $password = trim($password);
 
-    if (empty($username) || empty($password)) {
-        return false;
-    }
+    if (empty($username) || empty($password)) return false;
 
-    $users = get_users();
-    foreach ($users as $user) {
-        if (strcasecmp($user['username'], $username) === 0) {
-            if (password_verify($password, $user['password'])) {
-                return true;
-            }
-            break;
-        }
-    }
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare("SELECT password FROM users WHERE LOWER(username) = LOWER(?)");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
 
-    return false;
+    return $user && password_verify($password, $user['password']);
 }
 
 /**
- * Restablece la base de datos de usuarios en el servidor.
- * Conserva únicamente las cuentas administrativas principales (admin y superadmin)
- * y les quita el estado de voto para que puedan volver a votar en la demo.
- * 
- * @return array Comidas con votos reiniciados a 0.
+ * Elimina un usuario de la base de datos.
  */
-function reset_all_data() {
-    $fp = fopen(USERS_FILE, 'c+');
-    if (!$fp) {
-        return false;
-    }
-
-    $success = false;
-    if (flock($fp, LOCK_EX)) {
-        $filesize = filesize(USERS_FILE);
-        $users = [];
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $users = json_decode($content, true);
-        }
-        if (!is_array($users)) {
-            $users = [];
-        }
-
-        // Cuentas administrativas por defecto con sus hashes seguros BCRYPT
-        $admin_defaults = [
-            'superadmin' => [
-                'username' => 'superadmin',
-                'password' => '$2y$10$G6es7TI4m6uvhyXTJvil8OvvjtsX7SlaZ53jWG49LhXb3VzG09PRC', // superadmin123
-                'voted_for' => null,
-                'created_at' => date('Y-m-d H:i:s')
-            ],
-            'admin' => [
-                'username' => 'admin',
-                'password' => '$2y$10$3/Ax.et8y2HMF5iITEq3Y.257e8qlAlXwxugBZT5EeuahDWMmlzq6', // admin123
-                'voted_for' => null,
-                'created_at' => date('Y-m-d H:i:s')
-            ]
-        ];
-
-        $cleaned_users = [];
-        
-        // Conservar las cuentas de admin/superadmin que ya existan, pero limpiar sus votos
-        foreach ($users as $user) {
-            $uname = strtolower(trim($user['username']));
-            if ($uname === 'admin' || $uname === 'superadmin') {
-                $user['voted_for'] = null;
-                if (isset($user['voted_at'])) unset($user['voted_at']);
-                if (isset($user['last_vote_at'])) unset($user['last_vote_at']);
-                $cleaned_users[$uname] = $user;
-            }
-        }
-
-        // Sembrar si no existen en el archivo
-        foreach ($admin_defaults as $uname => $def_user) {
-            if (!isset($cleaned_users[$uname])) {
-                $cleaned_users[$uname] = $def_user;
-            }
-        }
-
-        rewind($fp);
-        ftruncate($fp, 0);
-        fwrite($fp, json_encode(array_values($cleaned_users), JSON_PRETTY_PRINT));
-        fflush($fp);
-        $success = true;
-        flock($fp, LOCK_UN);
-    }
-    fclose($fp);
-
-    return $success ? get_foods() : false;
-}
-
-/**
- * Elimina un usuario de la base de datos por su nombre de usuario.
- * 
- * @param string $username Nombre de usuario a eliminar.
- * @return bool True si se eliminó con éxito, False de lo contrario.
- */
-function delete_user_from_db($username) {
+function delete_user_from_db(string $username): bool {
     $username = trim($username);
-    if (empty($username)) {
-        return false;
-    }
+    if (empty($username)) return false;
 
-    if (!file_exists(USERS_FILE)) {
-        return false;
-    }
+    $pdo = get_pdo();
+    $stmt = $pdo->prepare("DELETE FROM users WHERE LOWER(username) = LOWER(?)");
+    $stmt->execute([$username]);
 
-    $fp = fopen(USERS_FILE, 'r+');
-    if (!$fp) {
-        return false;
-    }
-
-    $success = false;
-    if (flock($fp, LOCK_EX)) {
-        $filesize = filesize(USERS_FILE);
-        $users = [];
-        if ($filesize > 0) {
-            $content = fread($fp, $filesize);
-            $users = json_decode($content, true);
-        }
-
-        if (is_array($users)) {
-            $filtered_users = [];
-            $found = false;
-            foreach ($users as $user) {
-                if (strcasecmp($user['username'], $username) === 0) {
-                    $found = true;
-                    continue; // omitir este usuario
-                }
-                $filtered_users[] = $user;
-            }
-
-            if ($found) {
-                rewind($fp);
-                ftruncate($fp, 0);
-                fwrite($fp, json_encode($filtered_users, JSON_PRETTY_PRINT));
-                fflush($fp);
-                $success = true;
-            }
-        }
-        flock($fp, LOCK_UN);
-    }
-    fclose($fp);
-
-    return $success;
+    return $stmt->rowCount() > 0;
 }
 
+/**
+ * Reinicia todas las votaciones: elimina usuarios no-admin y limpia votos de admins.
+ */
+function reset_all_data(): array|false {
+    $pdo = get_pdo();
+
+    try {
+        $pdo->beginTransaction();
+
+        // Eliminar usuarios que no son admin/superadmin
+        $pdo->exec(
+            "DELETE FROM users WHERE LOWER(username) NOT IN ('admin', 'superadmin')"
+        );
+
+        // Limpiar votos de admin/superadmin
+        $pdo->exec(
+            "UPDATE users SET voted_for = NULL, voted_at = NULL
+             WHERE LOWER(username) IN ('admin', 'superadmin')"
+        );
+
+        $pdo->commit();
+        return get_foods();
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        return false;
+    }
+}
+
+/**
+ * Obtiene la IP local del servidor (para generación de QR en demo local).
+ */
+function get_local_ip(): string {
+    $ip = '127.0.0.1';
+
+    if (function_exists('socket_create')) {
+        try {
+            $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+            if ($sock) {
+                if (@socket_connect($sock, '8.8.8.8', 80)) {
+                    if (@socket_getsockname($sock, $local_ip, $port)) {
+                        if ($local_ip && $local_ip !== '127.0.0.1' && $local_ip !== '0.0.0.0') {
+                            $ip = $local_ip;
+                        }
+                    }
+                }
+                @socket_close($sock);
+            }
+        } catch (Exception $e) {}
+    }
+
+    if ($ip === '127.0.0.1') {
+        $hostname_ip = gethostbyname(gethostname());
+        if ($hostname_ip && $hostname_ip !== '127.0.0.1' && filter_var($hostname_ip, FILTER_VALIDATE_IP)) {
+            $ip = $hostname_ip;
+        }
+    }
+
+    return $ip;
+}

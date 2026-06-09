@@ -8,9 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Referencias de UI de Votación
     const mainLayout = document.querySelector('.main-layout');
     const voteButtons = document.querySelectorAll('.vote-button');
-    const totalVotesElement = document.getElementById('total-votes-count');
     const noticeContainer = document.getElementById('notice-container');
-    const resetVoteBtn = document.getElementById('reset-vote-btn');
     const sessionBar = document.getElementById('session-bar');
     
     // Referencias del Formulario de Autenticación Integrado (si no está logueado)
@@ -21,23 +19,80 @@ document.addEventListener('DOMContentLoaded', () => {
     const authErrorAlert = document.getElementById('auth-error-alert');
     const authErrorMessage = document.getElementById('auth-error-message');
 
-    // Iniciar Sondeo en Tiempo Real (Polling) cada 3 segundos para el panel de resultados
-    const pollInterval = setInterval(fetchLatestResults, 3000);
-
-    // Generar Código QR de Registro e Invitación con librería local (sin depender de internet)
-    const qrContainer = document.getElementById('qr-code-container');
-    if (qrContainer && typeof QRCode !== 'undefined') {
-        const currentUrl = window.location.href;
-        qrContainer.innerHTML = ''; // Limpiar por si acaso
-        new QRCode(qrContainer, {
-            text: currentUrl,
-            width: 160,
-            height: 160,
-            colorDark: '#1e130c',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-        });
+    // Iniciar Sondeo en Tiempo Real (Polling) cada 3 segundos SOLO si está el panel de auditoría
+    if (document.getElementById('admin-audit-table')) {
+        setInterval(fetchLatestResults, 3000);
     }
+
+    // ── Generación de Códigos QR de Invitación ─────────────────────────────
+    // Se inicializan los contenedores QR presentes en esta página:
+    //   - #qr-code-container-admin  → Panel de administración (admin/superadmin)
+    //   - #qr-code-container-login  → Vista de inicio de sesión (usuarios no autenticados)
+    const qrContainerIds = ['qr-code-container-admin', 'qr-code-container-login'];
+
+    /**
+     * Genera o regenera el código QR dentro de un contenedor dado.
+     * @param {string} containerId - ID del elemento contenedor del QR.
+     * @param {string} qrUrl - URL que codificará el QR.
+     */
+    function renderQR(containerId, qrUrl) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        container.innerHTML = ''; // Limpiar contenido previo
+
+        // Usar la librería qrcodejs si está disponible (funciona offline)
+        if (typeof QRCode !== 'undefined') {
+            try {
+                new QRCode(container, {
+                    text: qrUrl,
+                    width: 160,
+                    height: 160,
+                    colorDark: '#1e130c',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+                return;
+            } catch (err) {
+                console.warn(`QRCode.js falló en #${containerId}, usando fallback de API:`, err);
+            }
+        }
+
+        // Fallback: imagen de API pública si la librería no está disponible
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=1e130c&data=${encodeURIComponent(qrUrl)}`;
+        img.alt = 'Código QR de acceso';
+        img.style.cssText = 'width:160px;height:160px;border-radius:4px;display:block;';
+        container.appendChild(img);
+    }
+
+    // Construir la URL base apuntando a index.php con el parámetro de registro
+    function buildRegisterUrl(hostname) {
+        try {
+            const urlObj = new URL(window.location.href);
+            if (hostname) urlObj.hostname = hostname;
+            // Normalizar la ruta para apuntar siempre a index.php
+            urlObj.pathname = urlObj.pathname.replace(/\/[^/]*$/, '/index.php');
+            urlObj.searchParams.set('tab', 'register');
+            return urlObj.toString();
+        } catch (e) {
+            return window.location.href;
+        }
+    }
+
+    // Renderizar con la URL local primero para tener un QR inmediato
+    const qrUrlLocal = buildRegisterUrl(null);
+    qrContainerIds.forEach(id => renderQR(id, qrUrlLocal));
+
+    // Si está disponible la IP real de la red local (inyectada por PHP), reemplazar la URL del QR
+    if (window.APP_SERVER_IP &&
+        (window.location.hostname === 'localhost' ||
+         window.location.hostname === '127.0.0.1' ||
+         window.location.hostname === '[::1]')) {
+        const qrUrlNetwork = buildRegisterUrl(window.APP_SERVER_IP);
+        qrContainerIds.forEach(id => renderQR(id, qrUrlNetwork));
+    }
+    // ── Fin de Generación de Códigos QR ───────────────────────────────────
 
     // 1. Configurar eventos de Pestañas del Formulario Integrado (si existen)
     if (tabLoginBtn && tabRegisterBtn) {
@@ -56,6 +111,12 @@ document.addEventListener('DOMContentLoaded', () => {
             authLoginForm.classList.remove('active');
             hideAuthError();
         });
+
+        // Activar automáticamente la pestaña de registro si el QR trae ?tab=register
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tab') === 'register') {
+            tabRegisterBtn.click();
+        }
     }
 
     // 2. Procesar envío de Login Integrado
@@ -130,25 +191,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 4. Configurar eventos para los botones de votación (si se muestran en el DOM)
     if (voteButtons && voteButtons.length > 0) {
-        // Inicializar barras de progreso
-        setTimeout(animateProgressBars, 150);
-
         voteButtons.forEach(button => {
             button.addEventListener('click', async (e) => {
                 e.preventDefault();
                 const foodId = button.getAttribute('data-food-id');
                 
-                // Deshabilitar temporalmente para evitar doble clic accidental en tránsito
-                disableVoteButtons();
-                const originalBtnContent = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+                // Guardar los contenidos y estados originales de todos los botones de votación
+                // para poder revertir de inmediato si el servidor falla (Optimistic UI)
+                const originalBtnContents = [];
+                voteButtons.forEach(btn => {
+                    originalBtnContents.push({
+                        button: btn,
+                        content: btn.innerHTML
+                    });
+                });
 
-                let voteSuccess = false;
+                // Efecto visual inmediato: Añadir clase de pulsación rápida al botón presionado
+                button.classList.add('vote-clicked');
+                
+                // Aplicar el estado de votación completa en la UI de inmediato (Optimistic UI)
+                setAlreadyVotedState(true, foodId);
 
                 try {
                     const response = await fetch('api.php', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'same-origin',
                         body: JSON.stringify({ 
                             action: 'vote',
                             food_id: foodId 
@@ -157,21 +225,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const result = await response.json();
 
-                    if (response.ok && result.success) {
-                        updateResultsUI(result.data);
-                        setAlreadyVotedState(true);
-                        voteSuccess = true;
-                    } else {
+                    if (!response.ok || !result.success) {
+                        // Si falla la petición, revertimos el estado optimista y mostramos el mensaje de error
+                        revertVoteState(originalBtnContents);
                         showNotice(result.message || 'No se pudo registrar el voto.', 'error');
+                    } else {
+                        // Si tiene éxito, quitar animación y redirigir inmediatamente
+                        button.classList.remove('vote-clicked');
+                        window.location.href = 'resultados.php';
                     }
                 } catch (error) {
                     console.error('Error al votar:', error);
+                    // Revertimos ante problemas de red
+                    revertVoteState(originalBtnContents);
                     showNotice('Error al conectar con el servidor.', 'error');
-                } finally {
-                    // Solo reactivar los botones si el voto NO se completó con éxito para permitir reintentos
-                    if (!voteSuccess) {
-                        enableVoteButtons(originalBtnContent);
-                    }
                 }
             });
         });
@@ -197,33 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 6. Botón para reiniciar simulación de voto (limpia local y servidor)
-    if (resetVoteBtn) {
-        resetVoteBtn.addEventListener('click', async () => {
-            const confirmReset = confirm("¿Estás absolutamente seguro de reiniciar todas las votaciones y eliminar las cuentas de usuarios comunes? Esta acción no se puede deshacer.");
-            if (!confirmReset) return;
 
-            try {
-                const response = await fetch('api.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'reset_votes' })
-                });
-
-                const result = await response.json();
-
-                if (response.ok && result.success) {
-                    alert("¡Base de datos y estadísticas reiniciadas con éxito!");
-                    window.location.reload();
-                } else {
-                    alert(result.message || "Error al reiniciar la base de datos en el servidor.");
-                }
-            } catch (error) {
-                console.error("Error al reiniciar base de datos:", error);
-                alert("Error de conexión al intentar reiniciar.");
-            }
-        });
-    }
 
     // 7. Control de visibilidad de contraseñas (Toggle Password)
     const togglePasswordButtons = document.querySelectorAll('.toggle-password');
@@ -303,8 +344,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (response.ok && result.success) {
                 showNotice(result.message || 'Usuario eliminado con éxito.', 'success');
-                // Recalcular estadísticas y KPIs
-                updateResultsUI(result.data);
                 // Actualizar logs en caliente
                 if (result.admin_data && result.admin_data.users) {
                     updateAdminAuditUI(result.admin_data.users, result.data);
@@ -331,15 +370,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
 
             if (response.ok && result.success) {
-                updateResultsUI(result.data);
-                
                 // Si la respuesta contiene datos de auditoría administrativa, actualizarlos en tiempo real
                 if (result.admin_data && result.admin_data.users) {
                     updateAdminAuditUI(result.admin_data.users, result.data);
                 }
             }
         } catch (error) {
-            console.warn('Sondeo en tiempo real pausado temporariamente.');
+            console.warn('Sondeo en tiempo real de auditoría pausado temporariamente.');
         }
     }
 
@@ -417,13 +454,17 @@ document.addEventListener('DOMContentLoaded', () => {
             authErrorAlert.style.display = 'none';
         }
     }
-
-    function animateProgressBars() {
-        const barFills = document.querySelectorAll('.bar-fill');
-        barFills.forEach(fill => {
-            const percentage = fill.getAttribute('data-percentage');
-            fill.style.width = `${percentage}%`;
-        });
+    function revertVoteState(originalBtnContents) {
+        if (mainLayout) mainLayout.classList.remove('already-voted');
+        
+        if (originalBtnContents && originalBtnContents.length > 0) {
+            originalBtnContents.forEach(item => {
+                item.button.disabled = false;
+                item.button.innerHTML = item.content;
+                item.button.classList.remove('vote-clicked');
+                item.button.classList.remove('voted-choice');
+            });
+        }
     }
 
     function disableVoteButtons() {
@@ -441,122 +482,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function setAlreadyVotedState(justVoted = false) {
+    function setAlreadyVotedState(justVoted = false, votedFoodId = null) {
         if (mainLayout) mainLayout.classList.add('already-voted');
         disableVoteButtons();
         
         if (voteButtons) {
             voteButtons.forEach(btn => {
-                btn.innerHTML = '<i class="fas fa-check-circle"></i> Votación Completa';
+                const currentFoodId = btn.getAttribute('data-food-id');
+                if (votedFoodId && currentFoodId === votedFoodId) {
+                    btn.classList.add('voted-choice');
+                    btn.innerHTML = '<i class="fas fa-check-circle"></i> Elegiste este plato';
+                } else {
+                    btn.innerHTML = '<i class="fas fa-heart"></i> Voto ya realizado';
+                }
             });
         }
 
         if (justVoted) {
             showNotice('¡Gracias! Tu voto ha sido registrado con éxito.', 'success');
         } else {
-            showNotice('Ya has emitido tu voto en esta sesión. Abajo puedes ver las estadísticas actualizadas en tiempo real.', 'info');
+            showNotice('Ya has emitido tu voto en esta sesión. Puedes ver los resultados globales en la pantalla de estadísticas.', 'info');
         }
     }
 
-    function updateResultsUI(foodsList) {
-        if (!foodsList) return;
-        
-        let totalVotes = 0;
-        foodsList.forEach(f => totalVotes += parseInt(f.votes));
-        
-        totalVotesElement.textContent = totalVotes;
 
-        // --- CÁLCULO DE KPIS DINÁMICOS ---
-        let leaderName = 'Ninguno';
-        let leaderVotes = 0;
-        let leaderColor = '#7f8c8d';
-        let isTie = false;
-        let secondVotes = 0;
-
-        foodsList.forEach(food => {
-            const votes = parseInt(food.votes) || 0;
-            if (votes > leaderVotes) {
-                secondVotes = leaderVotes;
-                leaderVotes = votes;
-                leaderName = food.name;
-                leaderColor = food.color;
-                isTie = false;
-            } else if (votes === leaderVotes && votes > 0) {
-                isTie = true;
-            } else if (votes > secondVotes) {
-                secondVotes = votes;
-            }
-        });
-
-        const leaderPercentage = totalVotes > 0 ? Math.round((leaderVotes / totalVotes) * 100) : 0;
-        const margin = leaderVotes - secondVotes;
-
-        // Función interna para animar la transición con efecto pulse
-        function animateKPI(el, value) {
-            if (!el) return;
-            if (el.textContent !== String(value)) {
-                el.textContent = value;
-                el.classList.remove('value-pulse');
-                void el.offsetWidth; // forzar reflow
-                el.classList.add('value-pulse');
-            }
-        }
-
-        // Referencias a los componentes de KPIs
-        const kpiLeaderCard = document.getElementById('kpi-leader-card');
-        const kpiLeaderName = document.getElementById('kpi-leader-name');
-        const kpiLeaderStats = document.getElementById('kpi-leader-stats');
-        const kpiTotalValue = document.getElementById('kpi-total-value');
-        const kpiTrendValue = document.getElementById('kpi-trend-value');
-        const kpiTrendStats = document.getElementById('kpi-trend-stats');
-
-        if (kpiLeaderName) {
-            animateKPI(kpiLeaderName, isTie ? 'Empate Técnico' : leaderName);
-        }
-        if (kpiLeaderStats) {
-            animateKPI(kpiLeaderStats, totalVotes > 0 ? `${leaderPercentage}% de los votos` : 'Sin votos aún');
-        }
-        if (kpiTotalValue) {
-            animateKPI(kpiTotalValue, totalVotes);
-        }
-        if (kpiTrendValue) {
-            const trendText = isTie ? 'Empatados' : (totalVotes > 0 ? `+${margin} ${margin === 1 ? 'voto' : 'votos'}` : 'N/A');
-            animateKPI(kpiTrendValue, trendText);
-        }
-        if (kpiTrendStats) {
-            const trendStatsText = isTie ? 'Competencia reñida' : (totalVotes > 0 ? 'Sobre el 2do puesto' : 'Esperando votos');
-            animateKPI(kpiTrendStats, trendStatsText);
-        }
-
-        // Sintonizar color del líder en la tarjeta principal de métricas
-        if (kpiLeaderCard) {
-            kpiLeaderCard.style.borderLeft = `4px solid ${leaderColor}`;
-            const crownIcon = kpiLeaderCard.querySelector('.kpi-icon');
-            if (crownIcon) {
-                crownIcon.style.color = leaderColor;
-            }
-        }
-
-        // --- ACTUALIZAR BARRAS DE PROGRESO ---
-        foodsList.forEach(food => {
-            const barItem = document.getElementById(`bar-item-${food.id}`);
-            if (barItem) {
-                const percentage = totalVotes > 0 ? Math.round((food.votes / totalVotes) * 100) : 0;
-                
-                const percentText = barItem.querySelector('.bar-percentage');
-                if (percentText) percentText.textContent = `${percentage}%`;
-
-                const countText = barItem.querySelector('.bar-votes-count');
-                if (countText) countText.textContent = `(${food.votes} ${food.votes === 1 ? 'voto' : 'votos'})`;
-
-                const barFill = barItem.querySelector('.bar-fill');
-                if (barFill) {
-                    barFill.setAttribute('data-percentage', percentage);
-                    barFill.style.width = `${percentage}%`;
-                }
-            }
-        });
-    }
 
     function showNotice(message, type = 'info') {
         let iconClass = 'fa-info-circle';

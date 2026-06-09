@@ -61,9 +61,10 @@ if ($method === 'GET') {
         }
     }
     
-    // Devolver el estado de sesión y de votos actual
+    // Devolver el estado de sesión y de votos actual, junto con la IP local real para automatizar el QR en la demo
     echo json_encode([
         'success' => true,
+        'server_ip' => get_local_ip(),
         'data' => $foods,
         'user' => [
             'logged_in' => isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true,

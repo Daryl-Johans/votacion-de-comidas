@@ -89,11 +89,87 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainLayout = document.getElementById('main-layout');
     const sessionBar = document.getElementById('session-bar');
 
-    // Generar Código QR de Registro e Invitación Dinámico
+    // Generar Código QR de Registro e Invitación Dinámico con autodetección inteligente de IP de red local
     const qrImage = document.getElementById('qr-code-image');
     if (qrImage) {
-        const currentUrl = window.location.href;
-        qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=1e130c&bgcolor=ffffff&qzone=1&data=${encodeURIComponent(currentUrl)}`;
+        let currentUrl = window.location.href;
+
+        // Función para renderizar el código QR de manera limpia
+        const updateQrCode = (url) => {
+            qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&color=1e130c&bgcolor=ffffff&qzone=1&data=${encodeURIComponent(url)}`;
+        };
+
+        // Renderizado inicial con la URL local de la PC
+        updateQrCode(currentUrl);
+
+        // Si la URL es localhost, 127.0.0.1 o ::1, intentar autodetectar la IP física real mediante el backend
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '[::1]') {
+            fetch('api.php')
+                .then(response => response.json())
+                .then(result => {
+                    if (result && result.success && result.server_ip) {
+                        try {
+                            const urlObj = new URL(window.location.href);
+                            urlObj.hostname = result.server_ip;
+                            currentUrl = urlObj.toString();
+                            
+                            // Actualizar QR automáticamente con la IP real detectada en la red física
+                            updateQrCode(currentUrl);
+                            
+                            // Mostrar mensaje de éxito discreto en español
+                            const inviteText = document.querySelector('.qr-invite-text');
+                            if (inviteText) {
+                                inviteText.innerHTML = `✅ <strong>Acceso Móvil Automático Activo:</strong> Tu servidor de red local física está en <code>${result.server_ip}</code>. Escanea este código QR con tu celular Poco X7 para acceder directamente.`;
+                            }
+                        } catch (e) {
+                            console.warn("Error al parsear URL con la IP autodetectada:", e);
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.log("No se pudo detectar la IP de red local de forma automática en modo estático (API offline). Usando fallback local.");
+                    try {
+                        // IP de red local física detectada en el sistema
+                        const LOCAL_NETWORK_IP_FALLBACK = '10.171.205.158';
+                        const urlObj = new URL(window.location.href);
+                        urlObj.hostname = LOCAL_NETWORK_IP_FALLBACK;
+                        currentUrl = urlObj.toString();
+                        
+                        // Forzar actualización del código QR con la IP local
+                        updateQrCode(currentUrl);
+                        
+                        const inviteText = document.querySelector('.qr-invite-text');
+                        if (inviteText) {
+                            inviteText.innerHTML = `✅ <strong>Acceso Móvil Activo (Red Local):</strong> Tu servidor está en <code>${LOCAL_NETWORK_IP_FALLBACK}</code>. Escanea este código QR con tu celular para acceder directamente.`;
+                        }
+                    } catch (e) {
+                        console.warn("Error al inyectar fallback de IP local:", e);
+                    }
+                });
+        } else if (window.location.protocol === 'file:') {
+            // Caso especial: abriendo index.html directamente como archivo local en el disco
+            const inviteText = document.querySelector('.qr-invite-text');
+            if (inviteText && !document.getElementById('change-ip-link')) {
+                const originalText = inviteText.innerHTML;
+                inviteText.innerHTML = `⚠️ <strong>Servidor local inactivo:</strong> Estás abriendo el archivo de forma estática (<code>file://</code>). Para escanear con tu celular Poco X7, abre el proyecto desde XAMPP en tu navegador (ej. <code>http://localhost/votacion%20de%20comidas/</code>).<br><br>👉 <a href="#" id="change-ip-link" style="color:var(--color-primary);text-decoration:underline; font-weight:bold;">O ingresa la URL de XAMPP de tu computadora manualmente</a><br><br>` + originalText;
+                
+                document.getElementById('change-ip-link').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    let sugerencia = `http://192.168.1.15/`;
+                    if (window.location.pathname.includes('mis_proyectos')) {
+                        const partes = window.location.pathname.split('mis_proyectos');
+                        sugerencia = `http://192.168.1.15/mis_proyectos${partes[1]}`;
+                    }
+                    
+                    const userUrl = prompt("Ingresa la URL completa correcta de tu servidor Apache:", sugerencia);
+                    if (userUrl && userUrl.trim() !== "") {
+                        currentUrl = userUrl.trim();
+                        updateQrCode(currentUrl);
+                        inviteText.innerHTML = `✅ <strong>QR actualizado correctamente.</strong><br>URL: <code>${currentUrl}</code><br><br>Escanea este código con tu celular Poco X7 para votar.`;
+                    }
+                });
+            }
+        }
     }
 
     // Función auxiliar para determinar de forma relacional si el usuario activo ya votó
@@ -226,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mainLayout.classList.add('auth-view');
             
             mainContentSection.innerHTML = `
-                <h2 class="section-title" style="justify-content: center; text-align: center;">
+                <h2 class="section-title section-title--centered">
                     <i class="fas fa-lock"></i> Únete a la Votación Vallegrandina
                 </h2>
                 

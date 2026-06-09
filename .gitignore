@@ -17,6 +17,7 @@ composer.lock
 .env
 .env.local
 config.local.php
+config.php
 
 # Datos de la base de datos (si hay archivos SQLite u otros)
 data/*.db

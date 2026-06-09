@@ -1,0 +1,3 @@
+# Proteger la carpeta de datos - Denegar acceso directo desde el navegador
+Order Allow,Deny
+Deny from all
