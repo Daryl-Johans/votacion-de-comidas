@@ -7,12 +7,13 @@
  * ⚠️ ELIMINAR este archivo del servidor después de ejecutarlo.
  */
 
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/db_helper.php';
 
-$host   = 'sql210.infinityfree.com';
-$dbname = 'if0_42133638_votacion';
-$user   = 'if0_42133638';
-$pass   = DB_PASSWORD;
+$cfg    = get_db_config();
+$host   = $cfg['host'];
+$dbname = $cfg['dbname'];
+$user   = $cfg['username'];
+$pass   = $cfg['password'];
 
 try {
     $pdo = new PDO(
@@ -58,21 +59,21 @@ $foods = [
         'id'          => 'asadito',
         'name'        => 'Asadito Colorado',
         'description' => 'El rey de la gastronomía vallegrandina. Carne de cerdo adobada con urucú (achiote), ajo y pimienta, frita artesanalmente en su propia manteca hasta lograr un dorado crocante y jugoso.',
-        'image'       => 'images/asadito_colorado.png',
+        'image'       => 'images/asadito_colorado.jpg',
         'color'       => '#e74c3c',
     ],
     [
-        'id'          => 'escabeche',
-        'name'        => 'Escabeche Vallegrandino',
-        'description' => 'Una conserva exquisita de patitas de cerdo, cuero o carne de pollo, cocidos a la perfección y marinados en vinagre de manzana local con cebollas crujientes, zanahorias y especias.',
-        'image'       => 'images/escabeche.png',
-        'color'       => '#e67e22',
+        'id'          => 'bistec',
+        'name'        => 'Bistec Vallegrandino',
+        'description' => 'Un jugoso filete de res a la plancha, sazonado con las especias ancestrales de Vallegrande: ajo, comino y orégano, acompañado de papas doradas y ensalada fresca de la tierra vallegrandina.',
+        'image'       => 'images/bistec_vallegrandino.png',
+        'color'       => '#c0392b',
     ],
     [
         'id'          => 'huminta',
         'name'        => 'Huminta en Olla',
         'description' => 'Delicioso pastel hecho con choclo fresco (maíz tierno) molido a mano, mezclado con abundante queso criollo derretido, manteca y un toque de albahaca, cocinado lentamente al vapor.',
-        'image'       => 'images/huminta.png',
+        'image'       => 'images/huminta.jpg',
         'color'       => '#f1c40f',
     ],
     [

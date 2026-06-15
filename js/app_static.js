@@ -10,23 +10,23 @@ const INITIAL_FOODS = [
     "id": "asadito",
     "name": "Asadito Colorado",
     "description": "El rey de la gastronomía vallegrandina. Carne de cerdo adobada con urucú (achiote), ajo y pimienta, frita artesanalmente en su propia manteca hasta lograr un dorado crocante y jugoso.",
-    "image": "images/asadito_colorado.png",
+    "image": "images/asadito_colorado.jpg",
     "votes": 0,
     "color": "#e74c3c"
   },
   {
-    "id": "escabeche",
-    "name": "Escabeche Vallegrandino",
-    "description": "Una conserva exquisita de patitas de cerdo, cuero o carne de pollo, cocidos a la perfección y marinados en vinagre de manzana local con cebollas crujientes, zanahorias y especias.",
-    "image": "images/escabeche.png",
+    "id": "bistec",
+    "name": "Bistec Vallegrandino",
+    "description": "Un jugoso filete de res a la plancha, sazonado con las especias ancestrales de Vallegrande: ajo, comino y orégano, acompañado de papas doradas y ensalada fresca de la tierra vallegrandina.",
+    "image": "images/bistec_vallegrandino.png",
     "votes": 0,
-    "color": "#e67e22"
+    "color": "#c0392b"
   },
   {
     "id": "huminta",
     "name": "Huminta en Olla",
     "description": "Delicioso pastel hecho con choclo fresco (maíz tierno) molido a mano, mezclado con abundante queso criollo derretido, manteca y un toque de albahaca, cocinado lentamente al vapor.",
-    "image": "images/huminta.png",
+    "image": "images/huminta.jpg",
     "votes": 0,
     "color": "#f1c40f"
   },

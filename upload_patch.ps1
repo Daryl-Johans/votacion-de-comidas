@@ -85,9 +85,9 @@ $TodosLosArchivos = @(
     'css/style.css',
     'js/app.js',
     'js/resultados.js',
-    'images/asadito_colorado.png',
-    'images/escabeche.png',
-    'images/huminta.png',
+    'images/asadito_colorado.jpg',
+    'images/bistec_vallegrandino.png',
+    'images/huminta.jpg',
     'images/asado_chancho.png'
 )
 
