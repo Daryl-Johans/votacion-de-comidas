@@ -1587,9 +1587,31 @@ footer .footer-accent {
 /* ==========================================================================
    ADMIN SEARCH & ACTIONS STYLES
    ========================================================================== */
+.admin-controls-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    width: 100%;
+}
+
+@media (min-width: 576px) {
+    .admin-controls-wrapper {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+}
+
 .admin-search-wrapper {
-    margin-bottom: var(--spacing-sm);
     max-width: 100%;
+    flex-grow: 1;
+}
+
+@media (min-width: 576px) {
+    .admin-search-wrapper {
+        max-width: 320px;
+    }
 }
 
 .admin-search-wrapper .input-icon-wrapper i {
@@ -1608,6 +1630,52 @@ footer .footer-accent {
 .admin-search-wrapper .search-input:focus {
     border-color: var(--color-accent);
     box-shadow: 0 0 10px var(--color-accent-glow);
+}
+
+/* Botón de Reinicio Administrativo */
+.admin-reset-btn {
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.25);
+    color: #e74c3c;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 8px 18px;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all var(--transition-fast);
+    white-space: nowrap;
+    width: 100%;
+}
+
+@media (min-width: 576px) {
+    .admin-reset-btn {
+        width: auto;
+    }
+}
+
+.admin-reset-btn:hover {
+    background: rgba(231, 76, 60, 0.2);
+    border-color: #e74c3c;
+    box-shadow: 0 0 12px rgba(231, 76, 60, 0.2);
+    color: #ff6b5b;
+}
+
+.admin-reset-btn:active {
+    transform: scale(0.97);
+}
+
+.admin-reset-btn:disabled {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.05);
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
 }
 
 /* Acciones en la tabla de logs */

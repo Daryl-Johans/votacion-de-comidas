@@ -173,11 +173,18 @@ if ($is_logged_in && $username && !$is_admin) {
                                 <i class="fas fa-shield-halved animate-pulse"></i> Panel de Auditoría y Control (Administración)
                             </h2>
                             
-                            <!-- Barra de búsqueda en la tabla de logs -->
-                            <div class="admin-search-wrapper">
-                                <div class="input-icon-wrapper">
-                                    <input type="text" id="admin-search-input" class="form-input search-input" placeholder="Buscar usuario o plato votado...">
-                                    <i class="fas fa-magnifying-glass"></i>
+                            <!-- Controles del Panel: Búsqueda y Acciones de Control -->
+                            <div class="admin-controls-wrapper">
+                                <div class="admin-search-wrapper">
+                                    <div class="input-icon-wrapper">
+                                        <input type="text" id="admin-search-input" class="form-input search-input" placeholder="Buscar usuario o plato votado...">
+                                        <i class="fas fa-magnifying-glass"></i>
+                                    </div>
+                                </div>
+                                <div class="admin-actions-wrapper">
+                                    <button class="admin-reset-btn" id="admin-reset-btn" title="Reiniciar todas las votaciones y usuarios registrados">
+                                        <i class="fas fa-arrows-rotate"></i> Reiniciar Votación
+                                    </button>
                                 </div>
                             </div>
 

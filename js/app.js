@@ -361,6 +361,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 10. Control para el reinicio completo de votaciones (Administración)
+    const resetBtn = document.getElementById('admin-reset-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            const confirm1 = confirm("⚠️ ¿Estás absolutamente seguro de reiniciar todas las votaciones?\n\nEsta acción eliminará a todos los usuarios registrados (excepto cuentas admin y superadmin) y borrará todos los votos de la base de datos. Esta acción no se puede deshacer.");
+            if (!confirm1) return;
+
+            const confirm2 = confirm("🚨 ¿Realmente deseas proceder con el reinicio completo?\n\nLos datos históricos de la votación actual se perderán definitivamente.");
+            if (!confirm2) return;
+
+            // Cambiar estado visual del botón
+            const originalContent = resetBtn.innerHTML;
+            resetBtn.disabled = true;
+            resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reiniciando...';
+
+            try {
+                const response = await fetch('api.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'reset_votes' })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    showNotice(result.message || '¡Base de datos y estadísticas reiniciadas con éxito!', 'success');
+                    
+                    // Recargar la página tras un breve momento para ver los gráficos limpios
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    alert(result.message || 'Ocurrió un error al reiniciar la base de datos.');
+                    resetBtn.disabled = false;
+                    resetBtn.innerHTML = originalContent;
+                }
+            } catch (error) {
+                console.error('Error al reiniciar votaciones:', error);
+                alert('Error de red al conectar con el servidor.');
+                resetBtn.disabled = false;
+                resetBtn.innerHTML = originalContent;
+            }
+        });
+    }
+
     /**
      * Realiza un sondeo periódico del backend para actualizaciones en tiempo real.
      */
